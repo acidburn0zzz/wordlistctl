@@ -19,10 +19,11 @@
 # nrz@nullsecurity.net                                                         #
 #                                                                              #
 ################################################################################
-
+# TODO: download by name
+# TODO: mix
 
 # wordlistctl.sh version
-VERSION="wordlistctl.sh v0.1"
+VERSION="wordlistctl v0.1"
 
 # verbose mode - default: quiet
 VERBOSE="/dev/null"
@@ -33,11 +34,13 @@ DEBUG="/dev/null"
 # wordlist base directory
 LIST_DIR="/usr/share/wordlists"
 
+LIST_FILE="$LIST_DIR/wordlists.lst"
+
 # user agent string for curl
-USERAGENT="blackarch/${VERSION}"
+USERAGENT="wordlistctl/$VERSION"
 
 # default wordlist list
-#    name | size (human readable) | url
+#    name|size (human readable)|url
 URL_FILE="/usr/share/wordlistctl/wordlists.lst"
 
 # use colors
@@ -59,154 +62,130 @@ blue()
     fi
 }
 
-
 # print line in yellow
 yellow()
 {
-    msg="${*}"
+    msg=$*
 
-    if ${COLORS}
-    then
-        echo "`tput setaf 3``tput bold`${msg}`tput sgr0`"
+    if $COLORS ; then
+        echo "`tput setaf 3``tput bold`$msg`tput sgr0`"
     else
-        echo "${msg}"
+        echo "$msg"
     fi
 }
-
 
 # print line in green
 green()
 {
-    msg="${*}"
+    msg=$*
 
-    if ${COLORS}
-    then
-        echo "`tput setaf 2``tput bold`${msg}`tput sgr0`"
+    if $COLORS ; then
+        echo "`tput setaf 2``tput bold`$msg`tput sgr0`"
     else
-        echo "${msg}"
+        echo "$msg"
     fi
 }
-
 
 # print line in red
 red()
 {
-    msg="${*}"
+    msg=$*
 
-    if ${COLORS}
-    then
-        echo "`tput setaf 1``tput bold`${msg}`tput sgr0`"
+    if $COLORS ; then
+        echo "`tput setaf 1``tput bold`$msg`tput sgr0`"
     else
-        echo "${msg}"
+        echo "$msg"
     fi
 }
-
 
 # print warning
 warn()
 {
-    red "[!] WARNING: ${*}"
+    red "[!] WARNING: $*"
 }
-
 
 # print error and exit
 err()
 {
-    red "[-] ERROR: ${*}"
+    red "[-] ERROR: $*"
     exit 1
 }
 
-
 # list wordlists
-# TODO: finish
 list()
 {
-	blue "[*] available wordlists"
-	IFS='|'
-	while read name size url ; do
-		echo "name: $name"
-		echo "size: $name"
-		echo "url: $name"
-	done < "${LIST_FILE}"
+    blue "[*] available wordlists"
+    echo -e 'ID\tNAME\tSIZE\tURL'
+    sed 's/|/\t/g' < $LIST_FILE | nl -s'	' -w1
 }
-
-
-# extract exploit archives
-extract()
-{
-    blue "[*] extracting wordlist archives"
-
-	:
-}
-
 
 # get an entry from a list
 get_entry()
 {
-	sed -n "${1}p"
+    sed -n "${1}p"
 }
-
 
 # get entry name
 entry_get_name()
 {
-	cut -d'|' -f1 < ${LIST_FILE}
+    cut -d'|' -f1
 }
-
 
 # get entry size
 entry_get_size()
 {
-	cut -d'|' -f2 < ${LIST_FILE}
+    cut -d'|' -f2
 }
-
 
 # get entry url
 entry_get_url()
 {
-	cut -d'|' -f3 < ${LIST_FILE}
+    cut -d'|' -f3
 }
 
-
-# update exploit directory / fetch new exploit archives
+# update wordlist collection
 update()
 {
-    blue "[*] updating exploit collection"
-
-    # there is currently no need for doing checks and updates
-    green "  -> updating exploit-db ..." > ${VERBOSE} 2>&1
-    fetch_xploitdb
-    extract_xploitdb
-
-    green "  -> updating packetstorm ..." > ${VERBOSE} 2>&1
+    blue "[*] updating wordlist collection"
 }
-
 
 # download wordlist archives from chosen sites
 fetch()
 {
-	url=`get_entry < ${LIST_FILE} | get_url`
-	curl -O "$url"
+    local url=`get_entry $1 < $LIST_FILE | entry_get_url`
+    local name=`get_entry $1 < $LIST_FILE | entry_get_name`
+    blue "downloading and extracting package $name to $LIST_DIR/$name..."
+    (
+    mkdir -p "$LIST_DIR/$name"
+    cd "$LIST_DIR/$name"
+    curl -s "$url" |
+    case "$url" in
+        *.tar.gz|*.tgz) tar xz ;;
+        *.tar.xz) tar xJ ;;
+        *.tar.bz2|*.tbz2) tar xj ;;
+        *.tar) tar x ;;
+        *.zip) bsdtar -xvf- ;;
+    esac
+    # TODO: rar
+    # TODO: test zip
+    # TODO: 7zip
+    )
 }
-
 
 # usage and help
 usage()
 {
     echo "usage:"
     echo ""
-    echo "  wordlistctl.sh -f <arg> | -u <arg> | -s <arg> [options] | <misc>"
+    echo "  wordlistctl.sh -f <arg> | <misc>"
     echo ""
     echo "options:"
     echo ""
-    echo "  -f <num>    - download and extract wordlists from chosen"
-    echo "                websites - ? to list wordlists"
-    echo "  -u <num>    - update wordlists from chosen"
-    echo "                websites - ? to list wordlists"
-    echo "  -e <dir>    - wordlist directory (default: /usr/share/wordlists)"
+    echo "  -f <num>    - download and extract a wordlist package"
+    echo "                ? to list wordlists"
+    echo "  -o <dir>    - wordlist directory (default: /usr/share/wordlists)"
     echo "  -l <file>   - wordlist list"
-    echo "                (default: /usr/share/wordlistctl/wordlists)"
-    echo "  -c          - do not delete downloaded archive files"
+    echo "                (default: $LIST_FILE)"
     echo "  -n          - turn off colors"
     echo "  -v          - verbose mode (default: off)"
     echo "  -d          - debug mode (default: off)"
@@ -214,90 +193,56 @@ usage()
     echo "misc:"
     echo ""
     echo "  -V      - print version and exit"
-    echo "  -H      - print this help and exit"
+    echo "  -h      - print this help and exit"
 
     exit
 }
 
-
 # leet banner, very important
 banner()
 {
-    yellow "--==[ wordlistctl.sh by blackarch.org ]==--"
+    yellow "--==[ wordlistctl by {paraxor,noptrix}@blackarch.org ]==--"
 }
-
-
-# check chosen website
-check_site()
-{
-    if [ "${site}" = "?" ]
-    then
-		list
-        exit
-    elif [ "${site}" -lt "0" -o "${site}" -gt `wc -l < ${LIST_FILE}` ]
-    then
-        err "unknown wordlist"
-    fi
-}
-
 
 # check argument count
 check_argc()
 {
-    if [ ${#} -lt 1 ]
-    then
+    if [ $# -lt 1 ] ; then
         err "-H for help and usage"
     fi
 }
 
-
 # check if required arguments were selected
 check_args()
 {
-    blue "[*] checking arguments" > ${VERBOSE} 2>&1
+    blue "[*] checking arguments" > $VERBOSE 2>&1
 
-    if [ -z "${job}" ]
-    then
-        err "choose -f, -u or -s"
+    if [ -z "$job" ] ; then
+        usage
     fi
 
-    if [ "${job}" = "search_web" ] && [ ! -f "${URL_FILE}" ]
-    then
-        err "failed to get url file for web searching - try -l <file>"
+    if [ "$job" = search_web ] && [ ! -f "$URL_FILE" ] ; then
+        err "failed to get url file for web searching - try -L <file>"
     fi
 }
-
 
 # parse command line options
 get_opts()
 {
-    while getopts f:u:s:w:e:b:l:cnvdVH flags
-    do
-        case ${flags} in
+    while getopts f:u:s:w:lo:b:L:cnvdVh flags ; do
+        case $flags in
             f)
-                site="${OPTARG}"
-                job="fetch"
-                ;;
-            u)
-                site="${OPTARG}"
-                job="update"
-                ;;
-            s)
-                srch_str="${OPTARG}"
-                job="search_db"
-                ;;
-            w)
-                srch_str="${OPTARG}"
-                job="search_web"
-                ;;
-            e)
-                LIST_DIR="${OPTARG}"
+                package=$OPTARG
+                job=fetch
                 ;;
             l)
-                LIST_FILE="${OPTARG}"
+                job=list
                 ;;
-            c)
-                CLEAN=0
+            o)
+                LIST_DIR=$OPTARG
+                ;;
+            L)
+                LIST_FILE=$OPTARG
                 ;;
             n)
                 COLORS=0
@@ -309,10 +254,10 @@ get_opts()
                 DEBUG="/dev/stdout"
                 ;;
             V)
-                echo "${VERSION}"
+                echo "$VERSION"
                 exit
                 ;;
-            H)
+            h)
                 usage
                 ;;
             *)
@@ -322,41 +267,28 @@ get_opts()
     done
 }
 
-
 # controller and program flow
 main()
 {
-    check_argc "${@}"
-    get_opts "${@}"
+    check_argc "$@"
+    get_opts "$@"
     banner
-    check_args "${@}"
+    check_args "$@"
 
-    if [ "${job}" = "fetch" ]
-    then
-		check_site
-        fetch
-        extract
-        clean
-    elif [ "${job}" = "update" ]
-    then
-		check_site
-        update
-        clean
-    elif [ "${job}" = "search_db" ]
-    then
-        search_db
-    elif [ "${job}" = "search_web" ]
-    then
-        search_web
-    else
-        err "WTF?! mount /dev/brain"
-    fi
+    case "$job" in
+        fetch)
+            fetch "$package"
+            clean
+            ;;
+        list)
+            list
+            ;;
+        *)
+            err "WTF?! mount /dev/brain"
+            ;;
+    esac
 
     blue "[*] game over"
 }
 
-
-# program start
-main "${@}"
-
-# EOF
+main "$@"

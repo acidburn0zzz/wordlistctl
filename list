@@ -1,1 +1,3 @@
-test | 1G | example.com
+# name|size|url|strip
+test|1G|example.com|0
+test2|0B|http://localhost/list.tgz|1
