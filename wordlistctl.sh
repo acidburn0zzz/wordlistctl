@@ -15,7 +15,6 @@
 # AUTHORS                                                                      #
 # teitelmanevan@gmail.com                                                      #
 # noptrix@nullsecurity.net                                                     #
-# archey@riseup.net                                                            #
 # nrz@nullsecurity.net                                                         #
 #                                                                              #
 ################################################################################
@@ -52,13 +51,12 @@ CLEAN=true
 # print line in blue
 blue()
 {
-    msg="${*}"
+    msg="$*"
 
-    if ${COLORS}
-    then
+    if $COLORS ; then
         echo "`tput setaf 4``tput bold`${msg}`tput sgr0`"
     else
-        echo "${msg}"
+        echo "$msg"
     fi
 }
 
@@ -111,42 +109,33 @@ err()
     exit 1
 }
 
-# list wordlists
-list()
-{
-    blue "[*] available wordlists"
-    echo -e 'ID\tNAME\tSIZE\tURL'
-    sed 's/|/\t/g' < $LIST_FILE | nl -s'	' -w1
-}
-
 # get an entry from a list
 get_entry()
 {
-    sed -n "${1}p"
+    grep -v '^#' | sed -n "${1}p"
 }
 
-# get entry name
 entry_get_name()
 {
     cut -d'|' -f1
 }
 
-# get entry size
 entry_get_size()
 {
     cut -d'|' -f2
 }
 
-# get entry url
 entry_get_url()
 {
     cut -d'|' -f3
 }
 
-# update wordlist collection
-update()
+# list wordlists
+list()
 {
-    blue "[*] updating wordlist collection"
+    blue "[*] available wordlists"
+    echo -e 'ID\tNAME\tSIZE\tURL'
+    get_entry '1,$' < $LIST_FILE | sed 's/|/\t/g' | nl -w1
 }
 
 # download wordlist archives from chosen sites
@@ -154,22 +143,31 @@ fetch()
 {
     local url=`get_entry $1 < $LIST_FILE | entry_get_url`
     local name=`get_entry $1 < $LIST_FILE | entry_get_name`
-    blue "downloading and extracting package $name to $LIST_DIR/$name..."
+    local dir=$LIST_DIR/$name
+    blue "downloading and extracting package $name to $dir..."
     (
-    mkdir -p "$LIST_DIR/$name"
-    cd "$LIST_DIR/$name"
-    curl -s "$url" |
+    mkdir -p "$dir"
+    cd "$dir"
+    if ! curl -A "$USERAGENT" -s "$url" 2> /dev/null ; then
+        err 'download failed.'
+    fi |
     case "$url" in
         *.tar.gz|*.tgz) tar xz ;;
         *.tar.xz) tar xJ ;;
         *.tar.bz2|*.tbz2) tar xj ;;
         *.tar) tar x ;;
         *.zip) bsdtar -xvf- ;;
-    esac
+    esac 2> /dev/null
     # TODO: rar
     # TODO: test zip
     # TODO: 7zip
     )
+
+    # remove container directories
+    while [ `ls "$dir" | wc -l` -eq 1 ] ; do
+        mv "$dir"/*/* "$dir"
+        rmdir "$dir"/* 2> /dev/null
+    done
 }
 
 # usage and help
@@ -201,7 +199,7 @@ usage()
 # leet banner, very important
 banner()
 {
-    yellow "--==[ wordlistctl by {paraxor,noptrix}@blackarch.org ]==--"
+    yellow "--==[ wordlistctl by {paraxor,noptrix,nrz}@blackarch.org ]==--"
 }
 
 # check argument count
@@ -221,8 +219,8 @@ check_args()
         usage
     fi
 
-    if [ "$job" = search_web ] && [ ! -f "$URL_FILE" ] ; then
-        err "failed to get url file for web searching - try -L <file>"
+    if [ "$job" = fetch ] && [ ! -f "$LIST_FILE" ] ; then
+        err "could not find url file ($LIST_FILE)"
     fi
 }
 
@@ -267,7 +265,6 @@ get_opts()
     done
 }
 
-# controller and program flow
 main()
 {
     check_argc "$@"
